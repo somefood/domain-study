@@ -82,12 +82,19 @@ public class Product extends AggregateRoot {
 
     /**
      * SKU 추가.
-     * 같은 옵션 조합의 SKU가 이미 있으면 예외.
+     *
+     * 검증:
+     * 1. 단종 상태면 불가
+     * 2. SKU의 옵션 키가 Product에 정의된 옵션 이름과 정확히 일치해야 함
+     * 3. SKU의 옵션값이 해당 옵션에 정의된 값 중 하나여야 함
+     * 4. 같은 옵션 조합의 SKU가 이미 있으면 불가
      */
     public void addSku(SKU sku) {
         if (status == ProductStatus.DISCONTINUED) {
             throw new IllegalStateException("단종된 상품에는 SKU를 추가할 수 없습니다");
         }
+
+        validateSkuOptionCombination(sku);
 
         boolean duplicate = skus.stream()
                 .anyMatch(existing -> existing.hasSameOptionCombination(sku.getOptionCombination()));
@@ -96,6 +103,45 @@ public class Product extends AggregateRoot {
         }
 
         skus.add(sku);
+    }
+
+    /**
+     * SKU의 옵션 조합이 Product에 정의된 옵션과 일치하는지 검증.
+     *
+     * 예: Product 옵션이 [사이즈(270,280), 컬러(블랙,화이트)]라면
+     *     SKU는 반드시 {사이즈=270|280, 컬러=블랙|화이트} 형태여야 함
+     */
+    private void validateSkuOptionCombination(SKU sku) {
+        Map<String, OptionValue> combination = sku.getOptionCombination();
+
+        // 옵션이 정의되어 있지 않으면 검증 스킵 (옵션 없는 단일 상품)
+        if (options.isEmpty()) {
+            return;
+        }
+
+        // 1. SKU의 옵션 키 개수와 Product의 옵션 개수가 같아야 함
+        Set<String> definedOptionNames = options.stream()
+                .map(ProductOption::getName)
+                .collect(Collectors.toSet());
+
+        if (!definedOptionNames.equals(combination.keySet())) {
+            throw new IllegalArgumentException(
+                    String.format("SKU 옵션 조합이 상품 옵션과 일치하지 않습니다. 필요: %s, 입력: %s",
+                            definedOptionNames, combination.keySet())
+            );
+        }
+
+        // 2. 각 옵션값이 해당 옵션에 정의된 값 중 하나인지 확인
+        for (ProductOption option : options) {
+            OptionValue skuValue = combination.get(option.getName());
+            boolean validValue = option.getValues().contains(skuValue);
+            if (!validValue) {
+                throw new IllegalArgumentException(
+                        String.format("옵션 '%s'에 유효하지 않은 값입니다: %s. 허용 값: %s",
+                                option.getName(), skuValue, option.getValues())
+                );
+            }
+        }
     }
 
     /**

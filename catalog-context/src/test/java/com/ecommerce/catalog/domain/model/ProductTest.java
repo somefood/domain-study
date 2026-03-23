@@ -23,19 +23,28 @@ class ProductTest {
         return Product.register("나이키 에어맥스 90", "편안한 운동화", new SellerId("seller-1"));
     }
 
-    private SKU createSku(String optionId, String optionValue, long price) {
-        return new SKU(
-                SkuId.generate(),
-                Map.of(optionId, new OptionValue(optionValue)),
-                Money.krw(price)
-        );
+    /**
+     * 옵션이 정의된 DRAFT 상품 생성.
+     * SKU 검증이 옵션을 참조하므로 옵션을 먼저 추가해야 한다.
+     */
+    private Product createDraftProductWithOptions() {
+        Product product = createDraftProduct();
+        product.addOption(new ProductOption("사이즈", List.of(new OptionValue("270"), new OptionValue("280"))));
+        product.addOption(new ProductOption("컬러", List.of(new OptionValue("블랙"), new OptionValue("화이트"))));
+        return product;
+    }
+
+    private SKU createSku(Map<String, String> optionCombination, long price) {
+        Map<String, OptionValue> combination = new java.util.HashMap<>();
+        optionCombination.forEach((k, v) -> combination.put(k, new OptionValue(v)));
+        return new SKU(SkuId.generate(), combination, Money.krw(price));
     }
 
     private Product createActiveProduct() {
-        Product product = createDraftProduct();
-        product.addSku(createSku("size", "270", 139000));
+        Product product = createDraftProductWithOptions();
+        product.addSku(createSku(Map.of("사이즈", "270", "컬러", "블랙"), 139000));
         product.activate();
-        product.clearEvents(); // 이전 이벤트 정리
+        product.clearEvents();
         return product;
     }
 
@@ -85,8 +94,8 @@ class ProductTest {
         @Test
         @DisplayName("SKU가 있는 DRAFT 상품을 활성화할 수 있다")
         void activate_withSkus_succeeds() {
-            Product product = createDraftProduct();
-            product.addSku(createSku("size", "270", 139000));
+            Product product = createDraftProductWithOptions();
+            product.addSku(createSku(Map.of("사이즈", "270", "컬러", "블랙"), 139000));
 
             product.activate();
 
@@ -96,8 +105,8 @@ class ProductTest {
         @Test
         @DisplayName("활성화 시 ProductActivated 이벤트가 발행된다")
         void activate_publishesEvent() {
-            Product product = createDraftProduct();
-            product.addSku(createSku("size", "270", 139000));
+            Product product = createDraftProductWithOptions();
+            product.addSku(createSku(Map.of("사이즈", "270", "컬러", "블랙"), 139000));
             product.clearEvents();
 
             product.activate();
@@ -178,10 +187,10 @@ class ProductTest {
         @Test
         @DisplayName("같은 옵션 조합의 SKU를 중복 추가할 수 없다")
         void addSku_duplicateCombination_throwsException() {
-            Product product = createDraftProduct();
-            product.addSku(createSku("size", "270", 139000));
+            Product product = createDraftProductWithOptions();
+            product.addSku(createSku(Map.of("사이즈", "270", "컬러", "블랙"), 139000));
 
-            assertThatThrownBy(() -> product.addSku(createSku("size", "270", 149000)))
+            assertThatThrownBy(() -> product.addSku(createSku(Map.of("사이즈", "270", "컬러", "블랙"), 149000)))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("동일한 옵션 조합");
         }
@@ -189,9 +198,9 @@ class ProductTest {
         @Test
         @DisplayName("다른 옵션 조합의 SKU는 추가할 수 있다")
         void addSku_differentCombination_succeeds() {
-            Product product = createDraftProduct();
-            product.addSku(createSku("size", "270", 139000));
-            product.addSku(createSku("size", "280", 139000));
+            Product product = createDraftProductWithOptions();
+            product.addSku(createSku(Map.of("사이즈", "270", "컬러", "블랙"), 139000));
+            product.addSku(createSku(Map.of("사이즈", "280", "컬러", "블랙"), 139000));
 
             assertThat(product.getSkus()).hasSize(2);
         }
@@ -202,8 +211,41 @@ class ProductTest {
             Product product = createActiveProduct();
             product.discontinue();
 
-            assertThatThrownBy(() -> product.addSku(createSku("size", "280", 139000)))
+            assertThatThrownBy(() -> product.addSku(createSku(Map.of("사이즈", "280", "컬러", "화이트"), 139000)))
                     .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("Product에 정의되지 않은 옵션으로 SKU를 추가하면 예외 발생")
+        void addSku_undefinedOption_throwsException() {
+            Product product = createDraftProductWithOptions(); // 사이즈, 컬러 정의됨
+
+            // "무게"는 정의되지 않은 옵션
+            assertThatThrownBy(() -> product.addSku(createSku(Map.of("사이즈", "270", "무게", "500g"), 139000)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("일치하지 않습니다");
+        }
+
+        @Test
+        @DisplayName("옵션 개수가 맞지 않으면 예외 발생 (컬러 누락)")
+        void addSku_missingOption_throwsException() {
+            Product product = createDraftProductWithOptions(); // 사이즈, 컬러 정의됨
+
+            // 사이즈만 있고 컬러가 없음
+            assertThatThrownBy(() -> product.addSku(createSku(Map.of("사이즈", "270"), 139000)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("일치하지 않습니다");
+        }
+
+        @Test
+        @DisplayName("옵션에 정의되지 않은 값으로 SKU를 추가하면 예외 발생")
+        void addSku_invalidOptionValue_throwsException() {
+            Product product = createDraftProductWithOptions(); // 사이즈: 270, 280
+
+            // "999"는 사이즈 옵션값에 없음
+            assertThatThrownBy(() -> product.addSku(createSku(Map.of("사이즈", "999", "컬러", "블랙"), 139000)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("유효하지 않은 값");
         }
     }
 
@@ -216,8 +258,8 @@ class ProductTest {
         @Test
         @DisplayName("SKU 가격을 변경하면 PriceChanged 이벤트가 발행된다")
         void changePrice_publishesEvent() {
-            Product product = createDraftProduct();
-            SKU sku = createSku("size", "270", 139000);
+            Product product = createDraftProductWithOptions();
+            SKU sku = createSku(Map.of("사이즈", "270", "컬러", "블랙"), 139000);
             product.addSku(sku);
             product.clearEvents();
 
@@ -232,7 +274,7 @@ class ProductTest {
         @Test
         @DisplayName("존재하지 않는 SKU의 가격을 변경하면 예외 발생")
         void changePrice_unknownSku_throwsException() {
-            Product product = createDraftProduct();
+            Product product = createDraftProductWithOptions();
 
             assertThatThrownBy(() -> product.changeSkuPrice(SkuId.generate(), Money.krw(100000)))
                     .isInstanceOf(IllegalArgumentException.class)
@@ -242,8 +284,8 @@ class ProductTest {
         @Test
         @DisplayName("가격은 양수여야 한다")
         void changePrice_nonPositive_throwsException() {
-            Product product = createDraftProduct();
-            SKU sku = createSku("size", "270", 139000);
+            Product product = createDraftProductWithOptions();
+            SKU sku = createSku(Map.of("사이즈", "270", "컬러", "블랙"), 139000);
             product.addSku(sku);
 
             assertThatThrownBy(() -> product.changeSkuPrice(sku.getSkuId(), Money.krw(0)))
