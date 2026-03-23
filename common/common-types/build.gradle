@@ -1,0 +1,6 @@
+// Shared Kernel: 모든 Bounded Context가 공유하는 기본 타입들
+// Money, Address, Quantity 같은 Value Object와 DomainEvent, AggregateRoot 베이스 클래스
+// 주의: 여기에 도메인 로직을 넣지 않는다. 순수한 빌딩 블록만.
+
+dependencies {
+}

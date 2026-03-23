@@ -1,0 +1,14 @@
+rootProject.name = 'domain-study'
+
+// Shared Kernel
+include 'common:common-types'
+
+// Bounded Contexts
+include 'catalog-context'
+include 'inventory-context'
+include 'order-context'
+include 'payment-context'
+include 'settlement-context'
+include 'fulfillment-context'
+include 'member-context'
+include 'marketing-context'

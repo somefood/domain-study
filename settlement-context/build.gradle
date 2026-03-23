@@ -1,0 +1,19 @@
+plugins {
+    id 'org.springframework.boot'
+}
+
+// 아직 메인 클래스가 없으므로 bootJar 비활성화, 일반 jar 활성화
+bootJar {
+    enabled = false
+}
+
+jar {
+    enabled = true
+}
+
+dependencies {
+    implementation project(':common:common-types')
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    runtimeOnly 'com.h2database:h2'
+}
